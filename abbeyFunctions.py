@@ -1,5 +1,5 @@
 
-
+import os
 import networkx as nx
 from networkx.drawing.nx_agraph import graphviz_layout
 import matplotlib.pyplot as plt
@@ -205,7 +205,72 @@ def get_row_shared_edges(edges_dct):
 
 # function for plotting the shared row or column edges
 
-def plot_shared_edges(shared_edges):
+# def plot_shared_edges(shared_edges, filename=None):
+#     for key, lst in shared_edges.items():
+#         fig, ax = plt.subplots(figsize=(6, 6))
+#         G = nx.from_edgelist(lst)
+#         color_map = ["grey" for _ in G]
+#         plt.tight_layout()
+#         pos = graphviz_layout(G)
+#         nx.draw_networkx(G, pos, node_color=color_map, node_size=2500,
+#                          font_color="black",
+#                          font_size=26, alpha=1,
+#                          width=1, edge_color="C1",
+#                          connectionstyle='arc3, rad = 0.05',
+#                          ax=ax)
+#         if filename:
+#             plt.savefig(filename, format='pdf')
+#         else:
+#             plt.show()
+#         plt.close()
+        
+        
+# def plot_shared_edges(shared_edges_dfs, folder):
+#     # Create a subfolder for the shared edges plots
+#     shared_edges_folder = os.path.join(folder, 'shared_edges_plots')
+#     try:
+#         os.mkdir(shared_edges_folder)
+#     except FileExistsError:
+#         pass
+
+#     for idx, shared_edges in enumerate(shared_edges_dfs):
+#         for key, lst in shared_edges.items():
+#             fig, ax = plt.subplots(figsize=(6, 6))
+#             G = nx.from_edgelist(lst)
+#             color_map = ["grey" for _ in G]
+#             plt.tight_layout()
+#             pos = graphviz_layout(G)
+#             nx.draw_networkx(G, pos, node_color=color_map, node_size=2500,
+#                              font_color="black",
+#                              font_size=26, alpha=1,
+#                              width=1, edge_color="C1",
+#                              connectionstyle='arc3, rad = 0.05',
+#                              ax=ax)
+#             plt.savefig(os.path.join(shared_edges_folder, f'shared_edges_plot_{idx}.pdf'))
+#             plt.close()
+
+
+# def plot_shared_edges(shared_edges, folder):
+#     for key, lst in shared_edges.items():
+#         fig, ax = plt.subplots(figsize=(6, 6))
+#         G = nx.from_edgelist(lst)
+#         color_map = ["grey" for _ in G]
+#         plt.tight_layout()
+#         pos = graphviz_layout(G)
+#         nx.draw_networkx(G, pos, node_color=color_map, node_size=2500,
+#                          font_color="black",
+#                          font_size=26, alpha=1,
+#                          width=1, edge_color="C1",
+#                          connectionstyle='arc3, rad = 0.05',
+#                          ax=ax)
+
+
+def plot_shared_col_edges(shared_edges, name, folder):
+    try:
+        os.mkdir(folder)
+    except FileExistsError:
+        pass
+    
     for key, lst in shared_edges.items():
         fig, ax = plt.subplots(figsize=(6, 6))
         G = nx.from_edgelist(lst)
@@ -218,6 +283,33 @@ def plot_shared_edges(shared_edges):
                          width=1, edge_color="C1",
                          connectionstyle='arc3, rad = 0.05',
                          ax=ax)
-    plt.show()
+        pdf_file_path = os.path.join(folder, f'{name}_col_{key}.pdf')
+        with PdfPages(pdf_file_path) as pdf:
+            pdf.savefig(fig)
+        plt.close()
+
+        
+def plot_shared_row_edges(shared_edges, name, folder):
+    try:
+        os.mkdir(folder)
+    except FileExistsError:
+        pass
     
+    for key, lst in shared_edges.items():
+        fig, ax = plt.subplots(figsize=(6, 6))
+        G = nx.from_edgelist(lst)
+        color_map = ["grey" for _ in G]
+        plt.tight_layout()
+        pos = graphviz_layout(G)
+        nx.draw_networkx(G, pos, node_color=color_map, node_size=2500,
+                         font_color="black",
+                         font_size=26, alpha=1,
+                         width=1, edge_color="C1",
+                         connectionstyle='arc3, rad = 0.05',
+                         ax=ax)
+        pdf_file_path = os.path.join(folder, f'{name}_row_{key}.pdf')
+        with PdfPages(pdf_file_path) as pdf:
+            pdf.savefig(fig)
+        plt.close()
+
     
