@@ -1,6 +1,0 @@
-Shapiro-Wilk Test:
-Statistic: 0.752655029296875
-p-value: 0.0
-D'Agostino's K^2 Test:
-Statistic: 16915.645142161567
-p-value: 0.0
