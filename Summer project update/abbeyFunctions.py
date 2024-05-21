@@ -8,8 +8,9 @@ import copy
 from pgmpy.estimators import PC
 from matplotlib.backends.backend_pdf import PdfPages
 import pandas as pd
-# Assuming 'plot_df1', 'plot_df2', and 'plot_df3' are your three dataframes
-# function for plotting DAGs when you have three dataframes named 'plot_df1', 'plot_df2', and 'plot_df3'
+from scipy import stats
+from scipy.stats import chi2
+import numpy as np
 
 # Define a function to plot a DAG
 def graph_DAG(edges, df, title=""):
@@ -330,3 +331,46 @@ def plot_shared_edges(shared_edges):
                          ax=ax)
     plt.show()
 
+
+#Function for performing hausman test with two mixed effect models    
+    
+def hausman_test(r_fe, r_me1, r_me2):
+    b_fe = r_fe.params
+    b_fe_cov = r_fe.cov
+
+    b_me1 = r_me1.params
+    b_me1_cov = r_me1.cov_params()
+
+    b_me2 = r_me2.params
+    b_me2_cov = r_me2.cov_params()
+
+    common_coef = set(b_fe.index).intersection(b_me1.index).intersection(b_me2.index)
+    b_diff_me1 = b_fe[common_coef].sub(b_me1[common_coef])
+    b_diff_me2 = b_fe[common_coef].sub(b_me2[common_coef])
+
+    df = len(b_diff_me1)
+
+    b_cov_diff_me1 = b_fe_cov.loc[common_coef, common_coef].sub(b_me1_cov.loc[common_coef, common_coef])
+    b_var_diff_me1 = pd.Series(np.diag(b_cov_diff_me1), index=[b_cov_diff_me1.index])
+
+    b_cov_diff_me2 = b_fe_cov.loc[common_coef, common_coef].sub(b_me2_cov.loc[common_coef, common_coef])
+    b_var_diff_me2 = pd.Series(np.diag(b_cov_diff_me2), index=[b_cov_diff_me2.index])
+
+    stat_me1 = abs(b_diff_me1.T @ np.linalg.inv(b_cov_diff_me1) @ b_diff_me1)
+    p_value_me1 = 1 - stats.chi2.cdf(stat_me1, df)
+
+    stat_me2 = abs(b_diff_me2.T @ np.linalg.inv(b_cov_diff_me2) @ b_diff_me2)
+    p_value_me2 = 1 - stats.chi2.cdf(stat_me2, df)
+    
+    h_results = {
+        "Hausman_ME1": {
+            "t": stat_me1,
+            "p": p_value_me1
+        },
+        "Hausman_ME2": {
+            "t": stat_me2,
+            "p": p_value_me2
+        }
+    }
+    
+    return pd.DataFrame(h_results)
