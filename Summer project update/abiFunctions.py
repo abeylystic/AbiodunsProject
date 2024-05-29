@@ -110,17 +110,24 @@ def backward_stepwise_selection(df, dependent_var, fixed_predictors, potential_p
     return best_model, best_aic, results_df
 
 
-def get_model_summary(formula, df):
-    model = PanelOLS.from_formula(formula, df, drop_absorbed=True, check_rank=False)
-    results = model.fit()
-    return results
+# def get_model_summary(formula, df):
+#     model = PanelOLS.from_formula(formula, df, drop_absorbed=True, check_rank=False)
+#     results = model.fit()
+#     return results
 
 
-# Function to plot residula vs predicted
-def plot_residuals_vs_predicted(results):
+# Function to plot residuals vs predicted values
+def plot_residuals_vs_predicted(results, df):
     predicted_values = results.fitted_values
     residuals = results.resids
-
+    
+    # Plot the histogram of the residuals
+    fig, ax = plt.subplots(figsize=(20, 10))
+    residuals.plot.hist(bins=100, ax=ax)
+    plt.title("Residuals Histogram")
+    plt.show()
+#     plt.close()
+    
     plt.figure(figsize=(12, 6))
     plt.scatter(predicted_values, residuals)
     plt.xlabel('Predicted Values')
@@ -128,35 +135,63 @@ def plot_residuals_vs_predicted(results):
     plt.title('Residuals vs Predicted Values')
     plt.axhline(y=0, color='r', linestyle='--')
     plt.show()
-    
-    
-# Function to plot residual vs independent variables
+    plt.close()
+
+
+
+# Function to plot residuals vs independent variables
 def plot_residuals_vs_independent_vars(results, df, fixed_predictors, potential_predictors):
     residuals = results.resids
     residuals = residuals[~residuals.index.duplicated(keep='first')]  # Remove duplicates from the index
+    df['Residuals'] = residuals
 
     for predictor in fixed_predictors + potential_predictors:
         if predictor in df.columns:
             aligned_residuals = residuals.reindex(df.index)
+            corr = df.corr().round(3)[predictor]["Residuals"]
             plt.figure(figsize=(12, 6))
             plt.scatter(df[predictor], aligned_residuals)
             plt.xlabel(predictor)
             plt.ylabel('Residuals')
-            plt.title(f'Residuals vs {predictor}')
+            plt.title(f'Residuals vs {predictor}, Corr: {corr}')
             plt.axhline(y=0, color='r', linestyle='--')
             plt.show()
 
-            
+
 # Function to plot residuals vs dependent variable
-def plot_residuals_vs_dependent_var(results, df):
+def plot_residuals_vs_dependent_var(results, df, dependent_var='unem', title="Residuals vs Dependent Variable"):
     residuals = results.resids
     residuals = residuals[~residuals.index.duplicated(keep='first')]  # Remove duplicates from the index
+    df['Residuals'] = residuals
 
     aligned_residuals = residuals.reindex(df.index)
+    corr = df.corr().round(3)[dependent_var]["Residuals"]
     plt.figure(figsize=(12, 6))
-    plt.scatter(df['unem'], aligned_residuals)
-    plt.xlabel('Dependent Variable (unem)')
+    plt.scatter(df[dependent_var], aligned_residuals)
+    plt.xlabel(f'Dependent Variable ({dependent_var})')
     plt.ylabel('Residuals')
-    plt.title('Residuals vs Dependent Variable')
+    plt.title(f'{title}({dependent_var}), Corr: {corr}')
     plt.axhline(y=0, color='r', linestyle='--')
     plt.show()
+    
+    
+# Function to get model summary using PanelOLS
+def get_model_summary(formula, df, model_type):
+    if model_type == "PanelOLS":
+        model = PanelOLS.from_formula(formula, df, drop_absorbed=True, check_rank=False)
+    elif model_type == "PooledOLS":
+        model = PooledOLS.from_formula(formula, df, check_rank=False)
+    results = model.fit()
+    return results
+
+
+# Function to calculate average squared correlations
+def calculate_avg_squared_correlations(results, df, independent_vars):
+    residuals = results.resids
+    squared_correlations = []
+    for var in independent_vars:
+        correlation = np.corrcoef(residuals, df[var])[0, 1]
+        squared_correlation = correlation ** 2
+        squared_correlations.append(squared_correlation)
+    avg_squared_correlation = np.mean(squared_correlations)
+    return avg_squared_correlation, squared_correlations
