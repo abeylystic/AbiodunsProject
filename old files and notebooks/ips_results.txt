@@ -1,5 +1,0 @@
-                                                   Log Data          Diff    Twice Diff
-All industry total                            -1.899807e+00 -3.751443e+00 -5.636050e+00
-Agriculture, forestry, fishing and hunting    -1.923666e+12 -4.685209e+13          -inf
-Mining, quarrying, and oil and gas extraction -2.330795e+10 -5.216392e+12 -2.504684e+12
-Natural resources and mining                  -1.138058e+12 -2.795927e+13 -1.797876e+13
