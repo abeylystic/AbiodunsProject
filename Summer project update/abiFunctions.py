@@ -13,6 +13,8 @@ from scipy.stats import chi2
 import numpy as np
 from linearmodels.panel import PanelOLS
 from itertools import combinations
+import pingouin as pg
+import statsmodels.api as sm
 
 
 # Function to calculate AIC
@@ -195,3 +197,76 @@ def calculate_avg_squared_correlations(results, df, independent_vars):
         squared_correlations.append(squared_correlation)
     avg_squared_correlation = np.mean(squared_correlations)
     return avg_squared_correlation, squared_correlations
+
+
+# Function to build skeleton for undirected DAG
+def build_skeleton(df, undirected_graph, p_val = 0.005):    
+    def check_remaining_controls(control_vars, undirected_graph, x, y, controls_used):
+        for c_var in control_vars:
+            c_used = copy.copy(controls_used)
+            if y in undirected_graph[x]:
+                c_used.append(c_var)
+                test = pg.partial_corr(data=df, x=x, y=y, covar=c_used, method="pearson")
+                if test["p-val"].values[0] > p_val:
+                    undirected_graph[x].remove(y)
+                    break
+                else:
+                    remaining_controls = copy.copy(control_vars)
+                    remaining_controls.remove(c_var)
+                    check_remaining_controls(remaining_controls, undirected_graph, x, y, c_used)
+
+    for x in df.columns:
+        ys = undirected_graph[x]
+        for y in ys[:]:  # Use a slice copy to avoid modifying the list during iteration
+            if x != y:
+                test = pg.partial_corr(data=df, x=x, y=y, covar=None, method="pearson")
+                if test["p-val"].values[0] > p_val:
+                    undirected_graph[x].remove(y)
+                else:
+                    control_vars = [z for z in df.columns if z != y and z != x]
+                    check_remaining_controls(control_vars, undirected_graph, x, y, [])
+    return undirected_graph
+
+# Function to plot undirected DAG
+def graph_undirected_DAG(undirected_graph, df, title="DAG Structure"):
+    graph = nx.Graph()
+    edges = []
+    edge_labels = {}
+    
+    for key in undirected_graph:
+        for key2 in undirected_graph[key]:
+            if (key2, key) not in edges:
+                edge = (key.replace(" ", "\n"), key2.replace(" ", "\n"))
+                edges.append(edge)
+
+    graph.add_edges_from(edges)
+    color_map = ["C0" for _ in graph]
+
+    fig, ax = plt.subplots(figsize=(20, 12))
+    plt.tight_layout()
+    pos = graphviz_layout(graph)
+
+    plt.title(title, fontsize=30)
+    nx.draw_networkx(graph, pos, node_color=color_map, node_size=1500,
+                     with_labels=True, arrows=False, font_size=20,
+                     alpha=1, font_color="white", ax=ax)
+
+    plt.axis("off")
+    plt.savefig("g1.png", format="PNG")
+    plt.show()
+    
+
+# Function to get residuals 
+residuals = {}
+def get_residuals(df, weights):
+    for y_var in df.columns:
+        X_vars = list(df.columns)
+        X_vars.remove(y_var)
+        X = df[X_vars].copy()
+        # Initial estimate should include constant
+        X["Constant"] = 0
+        y = df[[y_var]]
+        model = sm.WLS(y, X, weights=weights)
+        results = model.fit()
+        residuals["$\\epsilon_{" + y_var + "}$"] = results.resid
+    return pd.DataFrame(residuals)
