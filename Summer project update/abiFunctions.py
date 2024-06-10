@@ -229,7 +229,7 @@ def build_skeleton(df, undirected_graph, p_val = 0.005):
 
 # Function to plot undirected DAG
 def graph_undirected_DAG(undirected_graph, df, title="DAG Structure"):
-    graph = nx.Graph()
+    graph = nx.DiGraph()
     edges = []
     edge_labels = {}
     
