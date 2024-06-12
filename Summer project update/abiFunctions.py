@@ -15,6 +15,7 @@ from linearmodels.panel import PanelOLS
 from itertools import combinations
 import pingouin as pg
 import statsmodels.api as sm
+import geopandas
 
 
 # Function to calculate AIC
@@ -270,3 +271,23 @@ def get_residuals(df, weights):
         results = model.fit()
         residuals["$\\epsilon_{" + y_var + "}$"] = results.resid
     return pd.DataFrame(residuals)
+
+
+# Function to import geographical data
+def import_geo_data(filename, index_col = "Date", FIPS_name = "FIPS"):
+    # import county level shapefile
+    map_data = geopandas.read_file(filename = filename,                                   
+                                   index_col = index_col)
+    # rename fips code to match variable name in COVID-19 data
+    map_data.rename(columns={"State":"state"},
+                    inplace = True)
+    # Combine statefips and county fips to create a single fips value
+    # that identifies each particular county without referencing the 
+    # state separately
+    map_data[FIPS_name] = map_data["STATEFP"].astype(str) + \
+        map_data["COUNTYFP"].astype(str)
+    map_data[FIPS_name] = map_data[FIPS_name].astype(np.int64)
+    # set FIPS as index
+    map_data.set_index(FIPS_name, inplace=True)
+    
+    return map_data
