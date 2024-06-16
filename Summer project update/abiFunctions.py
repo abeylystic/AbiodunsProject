@@ -16,6 +16,10 @@ from itertools import combinations
 import pingouin as pg
 import statsmodels.api as sm
 import geopandas
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error
+from linearmodels.panel import PooledOLS
 
 
 # Function to calculate AIC
@@ -291,3 +295,121 @@ def import_geo_data(filename, index_col = "Date", FIPS_name = "FIPS"):
     map_data.set_index(FIPS_name, inplace=True)
     
     return map_data
+
+
+# Function to Analyse and compare wls and pooled regressions from a dictionary of dataframes
+def analyze_wls_pooled_models(data_cluster_dict, dependent_var, k=None, shuffle=None, random_state=None, check_rank=None):
+    # Placeholder lists to store performance metrics and model attributes
+    mse_results = []
+    model_attributes = []
+
+    # Loop through the dataframes in the dictionary
+    for key, df in data_cluster_dict.items():
+        # Dropping rows with NaNs or infinite values
+        df = df.replace([np.inf, -np.inf], np.nan).dropna()
+        
+        # Calculate the weights based on the variance of the dependent variable for each county
+        county_unem = df.groupby('FIPS')[dependent_var].var()
+        df['weight'] = df['FIPS'].map(lambda x: 1 / county_unem[x])
+
+        # Ensuring that the weights column has no NaNs or infinite values
+        df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=['weight'])
+
+        # Define the dependent variable
+        y = df[dependent_var]
+        
+        # Define the independent variables and exclude 'FIPS' and 'TimePeriod'
+        X = df.drop(columns=[dependent_var, 'FIPS', 'TimePeriod'])
+
+        weights = df['weight']
+
+        for use_clusters in [True, False]:
+            X_filtered = X.drop(columns=[col for col in X.columns if 'clusters' in col]) if not use_clusters else X
+
+            # Checking for multicollinearity using VIF
+            vif_data = pd.DataFrame()
+            vif_data["feature"] = X_filtered.columns
+            vif_data["VIF"] = [variance_inflation_factor(X_filtered.dropna().values, i) for i in range(len(X_filtered.columns))]
+
+            # Setting up k-fold cross-validation
+            kf = KFold(n_splits=k, shuffle=shuffle, random_state=random_state)
+
+            # Placeholder lists to store MSE for each fold
+            mse_folds = []
+
+            # Performing k-fold cross-validation
+            for train_index, test_index in kf.split(df):
+                # Split the data into training and validation sets
+                X_train, X_test = X_filtered.iloc[train_index], X_filtered.iloc[test_index]
+                y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+                weights_train, weights_test = weights.iloc[train_index], weights.iloc[test_index]
+
+                # Fit the WLS models with the weights
+                model = sm.WLS(y_train, X_train, weights=weights_train).fit()
+
+                # Making predictions on the validation set
+                y_pred = model.predict(X_test)
+
+                # Calculating the mean squared error for each fold
+                mse_folds.append(mean_squared_error(y_test, y_pred))
+
+            # Computing the average mean squared error across all folds for this configuration
+            avg_mse = np.mean(mse_folds)
+
+            # Storing the results
+            mse_results.append({'Dataset': key, 'Clusters': use_clusters, 'Model': 'WLS', 'Avg MSE': avg_mse, 'MSE Folds': mse_folds, 'R^2': model.rsquared})
+
+            # Collecting WLS model attributes
+            model_attributes.append({
+                'Dataset': key,
+                'Clusters': use_clusters,
+                'Model': 'WLS',
+                'Beta Estimates': pd.Series(model.params),
+                'R^2': model.rsquared
+            })
+
+            # Convert y_train and y_test to DataFrame and set 2-level MultiIndex
+            y_train_pooled = y_train.to_frame().set_index([df.iloc[train_index].index, df.iloc[train_index]['TimePeriod']])
+            y_test_pooled = y_test.to_frame().set_index([df.iloc[test_index].index, df.iloc[test_index]['TimePeriod']])
+        
+            # Set 2-level MultiIndex for X_train and X_test
+            X_train_pooled = X_train.set_index([df.iloc[train_index].index, df.iloc[train_index]['TimePeriod']])
+            X_test_pooled = X_test.set_index([df.iloc[test_index].index, df.iloc[test_index]['TimePeriod']])
+        
+            # Fitting the pooled OLS models
+            pooled_model = PooledOLS(y_train_pooled, X_train_pooled, check_rank=check_rank).fit()
+
+            # Making predictions on the validation set
+            y_pred_pooled = pooled_model.predict(X_test_pooled)
+
+            # Calculating the mean squared error for the pooled OLS model
+            mse_pooled = mean_squared_error(y_test_pooled, y_pred_pooled)
+
+            # Storing the results for pooled OLS
+            mse_results.append({'Dataset': key, 'Clusters': use_clusters, 'Model': 'PooledOLS', 'Avg MSE': mse_pooled, 'MSE Folds': mse_folds, 'R^2': pooled_model.rsquared})
+
+            # Collecting PooledOLS model attributes
+            model_attributes.append({
+                'Dataset': key,
+                'Clusters': use_clusters,
+                'Model': 'PooledOLS',
+                'Beta Estimates': pd.Series(pooled_model.params),
+                'R^2': pooled_model.rsquared
+            })
+
+    # Create a DataFrame for beta estimates, MSEs, and R^2
+    result_df = pd.DataFrame()
+    for attributes in model_attributes:
+        dataset_name = attributes['Dataset']
+        clusters = attributes['Clusters']
+        model_name = attributes['Model']
+        beta_estimates = attributes['Beta Estimates']
+        avg_mse = next(result['Avg MSE'] for result in mse_results if result['Dataset'] == dataset_name and result['Clusters'] == clusters and result['Model'] == model_name)
+        mse_folds = next(result['MSE Folds'] for result in mse_results if result['Dataset'] == dataset_name and result['Clusters'] == clusters and result['Model'] == model_name)
+        r_squared = attributes['R^2']
+        mse_series = pd.Series([r_squared, avg_mse] + mse_folds, index=["$R^2$", "Avg MSE"] + [f"MSE Fold {i+1}" for i in range(len(mse_folds))])
+        combined_series = pd.concat([beta_estimates, mse_series], axis=0)
+        result_df = pd.concat([result_df, combined_series], axis=1)
+        result_df.rename(columns={result_df.columns[-1]: f"{dataset_name} - {clusters} - {model_name}"}, inplace=True)
+
+    return result_df
