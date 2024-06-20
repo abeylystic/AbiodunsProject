@@ -805,3 +805,172 @@ def analyze_wls_ols_models_least_mse(data_cluster_dict, dependent_var, k=5, shuf
             })
             
     return model_attributes
+
+# Function to analyse olw and wls with varying k-folds
+def analyze_wls_ols_models_with_varying_folds(data_cluster_dict, dependent_var, start_k=5, max_k=10, shuffle=True, random_state=None, num_iterations=10):
+    if random_state is not None:
+        np.random.seed(random_state)
+    
+    results = {}
+
+    for key, df in data_cluster_dict.items():
+        model_attributes = []
+
+        df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
+        county_unem = df.groupby('FIPS')[dependent_var].var()
+        df['weight'] = df['FIPS'].map(lambda x: 1 / county_unem.get(x, np.nan))
+        df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=['weight'])
+
+        y = df[dependent_var]
+        X = df.drop(columns=[dependent_var, 'FIPS', 'weight', 'TimePeriod'])
+        weights = df['weight']
+
+        for use_clusters in [True, False]:
+            X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
+
+            if 'Nominal rates' in key:
+                X_filtered = sm.add_constant(X_filtered)
+
+            all_mse_folds = []
+            all_beta_coefficients = []
+
+            for k in range(start_k, max_k + 1):
+                for _ in range(num_iterations):
+                    kf = KFold(n_splits=k, shuffle=shuffle, random_state=random_state)
+                    for train_index, test_index in kf.split(df):
+                        X_train, X_test = X_filtered.iloc[train_index], X_filtered.iloc[test_index]
+                        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+                        weights_train, weights_test = weights.iloc[train_index], weights.iloc[test_index]
+
+                        # WLS model
+                        model = sm.WLS(y_train, X_train, weights=weights_train).fit()
+                        y_pred = model.predict(X_test)
+                        mse = mean_squared_error(y_test, y_pred)
+                        all_mse_folds.append(mse)
+                        all_beta_coefficients.append(model.params.values)
+
+                # Select the least 3 MSEs across all iterations and folds
+                top_3_indices = np.argsort(all_mse_folds)[:3]
+                top_3_mse = [all_mse_folds[i] for i in top_3_indices]
+                avg_top_3_mse = np.mean(top_3_mse)
+                top_3_betas = [all_beta_coefficients[i] for i in top_3_indices]
+                avg_top_3_betas = np.mean(top_3_betas, axis=0)
+
+                model_attributes.append({
+                    'Dataset': key, 'Clusters': use_clusters, 'Model': 'WLS', 'K': k, 
+                    'Avg Beta Estimates': pd.Series(avg_top_3_betas, index=model.params.index),
+                    'Avg Top 3 MSE': avg_top_3_mse,
+                    'R^2': model.rsquared,
+                    'Residuals': model.resid
+                })
+
+                all_ols_mse_folds = []
+                all_ols_beta_coefficients = []
+
+                for _ in range(num_iterations):
+                    kf = KFold(n_splits=k, shuffle=shuffle, random_state=random_state)
+                    for train_index, test_index in kf.split(df):
+                        X_train_ols, X_test_ols = X_filtered.iloc[train_index], X_filtered.iloc[test_index]
+                        y_train_ols, y_test_ols = y.iloc[train_index], y.iloc[test_index]
+
+                        ols_model = sm.OLS(y_train_ols, X_train_ols).fit()
+                        y_pred_ols = ols_model.predict(X_test_ols)
+                        mse_ols = mean_squared_error(y_test_ols, y_pred_ols)
+                        all_ols_mse_folds.append(mse_ols)
+                        all_ols_beta_coefficients.append(ols_model.params.values)
+
+                # Select the least 3 MSEs across all iterations and folds for OLS
+                top_3_indices_ols = np.argsort(all_ols_mse_folds)[:3]
+                top_3_mse_ols = [all_ols_mse_folds[i] for i in top_3_indices_ols]
+                avg_top_3_mse_ols = np.mean(top_3_mse_ols)
+                top_3_betas_ols = [all_ols_beta_coefficients[i] for i in top_3_indices_ols]
+                avg_top_3_betas_ols = np.mean(top_3_betas_ols, axis=0)
+
+                model_attributes.append({
+                    'Dataset': key, 'Clusters': use_clusters, 'Model': 'OLS', 'K': k, 
+                    'Avg Beta Estimates': pd.Series(avg_top_3_betas_ols, index=ols_model.params.index),
+                    'Avg Top 3 MSE': avg_top_3_mse_ols,
+                    'R^2': ols_model.rsquared,
+                    'Residuals': ols_model.resid
+                })
+        
+        results[key] = model_attributes
+
+    return results
+
+
+
+# Function to plot wls and ols caomparisons (bar charts)
+def plot_model_comparisons(df, title_suffix):
+    # Initialize colors for 'WLS' and 'OLS' models
+    color_wls = 'skyblue'
+    color_ols = 'salmon'
+
+    # Extract variables and K values from the dataframe
+    variables = set()
+    k_values = set()
+    for entry in df:
+        if 'Avg Beta Estimates' in entry:
+            variables.update(entry['Avg Beta Estimates'].keys())
+        k_values.add(entry['K'])
+    
+    variables = sorted(variables)
+    k_values = sorted(k_values)
+    
+    # Initialize a figure with subplots
+    fig, axes = plt.subplots(2 * (len(variables) + 2), 1, figsize=(12, 12 * (len(variables) + 2)), sharex=True)
+    
+    for idx, var in enumerate(variables):
+        for cluster_status in [True, False]:
+            for model_idx, model in enumerate(['WLS', 'OLS']):
+                var_values = []
+                for entry in df:
+                    if entry['Clusters'] == cluster_status and entry['Model'] == model:
+                        k = entry['K']
+                        if var in entry['Avg Beta Estimates']:
+                            var_values.append(entry['Avg Beta Estimates'][var])
+                        else:
+                            var_values.append(0)  # Handle missing variable case
+                if model == 'WLS':
+                    axes[2 * idx + cluster_status].bar(np.arange(len(k_values)) + model_idx * 0.4, var_values, color=color_wls, width=0.4, alpha=0.7, label=model)
+                elif model == 'OLS':
+                    axes[2 * idx + cluster_status].bar(np.arange(len(k_values)) + model_idx * 0.4, var_values, color=color_ols, width=0.4, alpha=0.7, label=model)
+            axes[2 * idx + cluster_status].set_xlabel('K values')
+            axes[2 * idx + cluster_status].set_ylabel(f'Values')
+            axes[2 * idx + cluster_status].set_title(f'{var} ({title_suffix}, Clusters={cluster_status})')
+            axes[2 * idx + cluster_status].set_xticks(np.arange(len(k_values)) + 0.2)
+            axes[2 * idx + cluster_status].set_xticklabels([f'K={k}' for k in k_values])  # Set the x-axis labels to include K values
+            axes[2 * idx + cluster_status].grid(axis='y')
+            axes[2 * idx + cluster_status].legend()
+    
+    # Include R^2 and Avg Top 3 MSE in the plot
+    for cluster_status in [True, False]:
+        for model_idx, model in enumerate(['WLS', 'OLS']):
+            r_squared_values = [entry['R^2'] for entry in df if entry['Clusters'] == cluster_status and entry['Model'] == model]
+            avg_top3_mse_values = [entry['Avg Top 3 MSE'] for entry in df if entry['Clusters'] == cluster_status and entry['Model'] == model]
+            if model == 'WLS':
+                axes[2 * len(variables) + cluster_status].bar(np.arange(len(k_values)) + model_idx * 0.4, r_squared_values, color=color_wls, width=0.4, alpha=0.7, label=model)
+                axes[2 * len(variables) + 2 + cluster_status].bar(np.arange(len(k_values)) + model_idx * 0.4, avg_top3_mse_values, color=color_wls, width=0.4, alpha=0.7, label=model)
+            elif model == 'OLS':
+                axes[2 * len(variables) + cluster_status].bar(np.arange(len(k_values)) + model_idx * 0.4, r_squared_values, color=color_ols, width=0.4, alpha=0.7, label=model)
+                axes[2 * len(variables) + 2 + cluster_status].bar(np.arange(len(k_values)) + model_idx * 0.4, avg_top3_mse_values, color=color_ols, width=0.4, alpha=0.7, label=model)
+            
+            axes[2 * len(variables) + cluster_status].set_xlabel('K values')
+            axes[2 * len(variables) + cluster_status].set_ylabel('$R^2$')
+            axes[2 * len(variables) + cluster_status].set_title(f'$R^2$ ({title_suffix}, Clusters={cluster_status})')
+            axes[2 * len(variables) + cluster_status].set_xticks(np.arange(len(k_values)) + 0.2)
+            axes[2 * len(variables) + cluster_status].set_xticklabels([f'K={k}' for k in k_values])  # Set the x-axis labels to include K values
+            axes[2 * len(variables) + cluster_status].grid(axis='y')
+            axes[2 * len(variables) + cluster_status].legend()
+            
+            axes[2 * len(variables) + 2 + cluster_status].set_xlabel('K values')
+            axes[2 * len(variables) + 2 + cluster_status].set_ylabel('Avg Top 3 MSE')
+            axes[2 * len(variables) + 2 + cluster_status].set_title(f'Avg Top 3 MSE ({title_suffix}, Clusters={cluster_status})')
+            axes[2 * len(variables) + 2 + cluster_status].set_xticks(np.arange(len(k_values)) + 0.2)
+            axes[2 * len(variables) + 2 + cluster_status].set_xticklabels([f'K={k}' for k in k_values])  # Set the x-axis labels to include K values
+            axes[2 * len(variables) + 2 + cluster_status].grid(axis='y')
+            axes[2 * len(variables) + 2 + cluster_status].legend()
+    
+    plt.tight_layout()
+    plt.show()
