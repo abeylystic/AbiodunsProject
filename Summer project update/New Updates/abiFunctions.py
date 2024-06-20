@@ -19,7 +19,9 @@ import geopandas
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
-from linearmodels.panel import PooledOLS
+from linearmodels.panel import PooledOLS    
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 # Function to calculate AIC
@@ -974,3 +976,127 @@ def plot_model_comparisons(df, title_suffix):
     
     plt.tight_layout()
     plt.show()
+    
+
+
+# Function to plot dynamic line plots 
+def plot_model_comparisons_with_dropdowns(results_dict):
+    variables = set()
+    k_values = set()
+    for entry in results_dict['Nominal rates with clusters']:
+        if 'Avg Beta Estimates' in entry:
+            variables.update(entry['Avg Beta Estimates'].keys())
+        k_values.add(entry['K'])
+    
+    variables = sorted(variables)
+    k_values = sorted(k_values)
+
+    # Create subplots: 3 rows, 2 columns
+    fig = make_subplots(rows=3, cols=2, subplot_titles=[
+        'Beta Estimates (OLS)', 'Beta Estimates (WLS)',
+        'Avg Top 3 MSE (OLS)', 'Avg Top 3 MSE (WLS)',
+        '$R^2 (OLS)$', '$R^2 (WLS)$'
+    ], vertical_spacing=0.1, horizontal_spacing=0.1)
+
+    def add_traces_to_fig(df, title_suffix):
+        for var in variables:
+            for cluster_status in [True, False]:
+                for model in ['WLS', 'OLS']:
+                    var_values = []
+                    for entry in df:
+                        if entry['Clusters'] == cluster_status and entry['Model'] == model:
+                            k = entry['K']
+                            if var in entry['Avg Beta Estimates']:
+                                var_values.append(entry['Avg Beta Estimates'][var])
+                            else:
+                                var_values.append(0)  # Handle missing variable case
+
+                    line_style = dict(dash='dash') if not cluster_status else dict()  # Dotted lines for Clusters=False
+                    cluster_text = "Clusters=True" if cluster_status else "Clusters=False"
+                    row, col = (1, 1) if model == 'OLS' else (1, 2)
+                    fig.add_trace(go.Scatter(x=k_values, y=var_values, mode='lines+markers', name=f'{var} ({model}, {cluster_text}, {title_suffix})', line=line_style, visible=False), row=row, col=col)
+
+        for cluster_status in [True, False]:
+            for model in ['WLS', 'OLS']:
+                r_squared_values = [entry['R^2'] for entry in df if entry['Clusters'] == cluster_status and entry['Model'] == model]
+                avg_top3_mse_values = [entry['Avg Top 3 MSE'] for entry in df if entry['Clusters'] == cluster_status and entry['Model'] == model]
+                
+                line_style = dict(dash='dash') if not cluster_status else dict()  # Dotted lines for Clusters=False
+                cluster_text = "Clusters=True" if cluster_status else "Clusters=False"
+                row_r2, col_r2 = (3, 1) if model == 'OLS' else (3, 2)
+                row_mse, col_mse = (2, 1) if model == 'OLS' else (2, 2)
+                
+                fig.add_trace(go.Scatter(x=k_values, y=avg_top3_mse_values, mode='lines+markers', name=f'Avg Top 3 MSE ({model}, {cluster_text}, {title_suffix})', line=line_style, visible=False), row=row_mse, col=col_mse)
+                fig.add_trace(go.Scatter(x=k_values, y=r_squared_values, mode='lines+markers', name=f'R^2 ({model}, {cluster_text}, {title_suffix})', line=line_style, visible=False), row=row_r2, col=col_r2)
+
+    add_traces_to_fig(results_dict['Nominal rates with clusters'], 'Nominal rates')
+    add_traces_to_fig(results_dict['Nominal diff rates with clusters'], 'Nominal diff rates')
+
+    # Update layout with dropdown and legend button
+    fig.update_layout(
+        title='Model Comparisons',
+        showlegend=False,
+        height=900, width=1400,  # Increase plot size
+        updatemenus=[
+            {
+                'buttons': [
+                    {
+                        'label': 'Nominal rates',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [i < len(fig.data) // 2 for i in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for Nominal rates'}
+                        ]
+                    },
+                    {
+                        'label': 'Nominal diff rates',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [i >= len(fig.data) // 2 for i in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for Nominal diff rates'}
+                        ]
+                    },
+                    {
+                        'label': 'Both',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [True for _ in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for Nominal rates and Nominal diff rates'}
+                        ]
+                    }
+                ],
+                'direction': 'down',
+                'showactive': True,
+                'x': 0.17,
+                'xanchor': 'left',
+                'y': 1.15,
+                'yanchor': 'top'
+            },
+            {
+                'buttons': [
+                    {
+                        'label': 'Show Legend',
+                        'method': 'relayout',
+                        'args': [{'showlegend': True}]
+                    },
+                    {
+                        'label': 'Hide Legend',
+                        'method': 'relayout',
+                        'args': [{'showlegend': False}]
+                    }
+                ],
+                'direction': 'down',
+                'showactive': True,
+                'x': 0.3,
+                'xanchor': 'left',
+                'y': 1.15,
+                'yanchor': 'top'
+            }
+        ]
+    )
+
+    # Initialize the plot with 'Nominal rates' visible
+    for i in range(len(fig.data) // 2):
+        fig.data[i].visible = True
+
+    return fig
