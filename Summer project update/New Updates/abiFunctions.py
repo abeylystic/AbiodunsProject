@@ -321,6 +321,9 @@ def analyze_wls_pooled_models(data_cluster_dict, dependent_var, k=5, shuffle=Tru
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
             if 'Nominal rates' in key:
                 X_filtered = sm.add_constant(X_filtered)
                 
@@ -433,6 +436,9 @@ def wls_pooled_model_analysis(data_cluster_dict, dependent_var, random_state=Non
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
             if 'Nominal rates' in key:
                 X_filtered = sm.add_constant(X_filtered)
                 
@@ -504,6 +510,9 @@ def analyze_wls_pooled_models_all_mse(data_cluster_dict, dependent_var, k=5, shu
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
             if 'Nominal rates' in key:
                 X_filtered = sm.add_constant(X_filtered)
                 
@@ -621,6 +630,9 @@ def analyze_wls_pooled_models_least_mse(data_cluster_dict, dependent_var, k=5, s
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
             if 'Nominal rates' in key:
                 X_filtered = sm.add_constant(X_filtered)
                 
@@ -745,6 +757,9 @@ def analyze_wls_ols_models_least_mse(data_cluster_dict, dependent_var, k=5, shuf
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
             if 'Nominal rates' in key:
                 X_filtered = sm.add_constant(X_filtered)
                 
@@ -831,6 +846,9 @@ def analyze_wls_ols_models_with_varying_folds(data_cluster_dict, dependent_var, 
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
             if 'Nominal rates' in key:
                 X_filtered = sm.add_constant(X_filtered)
 
