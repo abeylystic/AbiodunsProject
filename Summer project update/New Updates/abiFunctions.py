@@ -22,6 +22,10 @@ from sklearn.metrics import mean_squared_error
 from linearmodels.panel import PooledOLS    
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import itertools
+import plotly.io as pio
+
+
 
 
 # Function to calculate AIC
@@ -846,10 +850,7 @@ def analyze_wls_ols_models_with_varying_folds(data_cluster_dict, dependent_var, 
         for use_clusters in [True, False]:
             X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
 
-            # Ensure X_filtered contains only numeric data
-            X_filtered = X_filtered.select_dtypes(include=[np.number])            
-            
-            if 'Nominal rates' in key:
+            if 'Nominal rates' in key or 'Nominal log' in key:
                 X_filtered = sm.add_constant(X_filtered)
 
             all_mse_folds = []
@@ -918,7 +919,6 @@ def analyze_wls_ols_models_with_varying_folds(data_cluster_dict, dependent_var, 
         results[key] = model_attributes
 
     return results
-
 
 
 # Function to plot wls and ols caomparisons (bar charts)
@@ -1118,3 +1118,282 @@ def plot_model_comparisons_with_dropdowns(results_dict):
         fig.data[i].visible = True
 
     return fig
+
+# For all dataframes
+def wls_ols_with_varying_folds(data_cluster_dict, dependent_var, start_k=5, max_k=10, shuffle=True, random_state=None, num_iterations=10):
+    if random_state is not None:
+        np.random.seed(random_state)
+    
+    results = {}
+
+    for key, df in data_cluster_dict.items():
+        model_attributes = []
+
+        df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
+        county_unem = df.groupby('FIPS')[dependent_var].var()
+        df['weight'] = df['FIPS'].map(lambda x: 1 / county_unem.get(x, np.nan))
+        df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=['weight'])
+
+        y = df[dependent_var]
+        X = df.drop(columns=[dependent_var, 'FIPS', 'weight', 'TimePeriod'])
+        weights = df['weight']
+
+        for use_clusters in [True, False]:
+            X_filtered = X.drop(columns=[col for col in X.columns if 'cluster' in col]) if not use_clusters else X
+
+            # Ensure X_filtered contains only numeric data
+            X_filtered = X_filtered.select_dtypes(include=[np.number])            
+            
+            if 'Nominal rates' in key or 'Nominal log' in key:
+                X_filtered = sm.add_constant(X_filtered)
+
+            all_mse_folds = []
+            all_beta_coefficients = []
+
+            for k in range(start_k, max_k + 1):
+                for _ in range(num_iterations):
+                    kf = KFold(n_splits=k, shuffle=shuffle, random_state=random_state)
+                    for train_index, test_index in kf.split(df):
+                        X_train, X_test = X_filtered.iloc[train_index], X_filtered.iloc[test_index]
+                        y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+                        weights_train, weights_test = weights.iloc[train_index], weights.iloc[test_index]
+
+                        # WLS model
+                        model = sm.WLS(y_train, X_train, weights=weights_train).fit()
+                        y_pred = model.predict(X_test)
+                        mse = mean_squared_error(y_test, y_pred)
+                        all_mse_folds.append(mse)
+                        all_beta_coefficients.append(model.params.values)
+
+                # Select the least 3 MSEs across all iterations and folds
+                top_3_indices = np.argsort(all_mse_folds)[:3]
+                top_3_mse = [all_mse_folds[i] for i in top_3_indices]
+                avg_top_3_mse = np.mean(top_3_mse)
+                top_3_betas = [all_beta_coefficients[i] for i in top_3_indices]
+                avg_top_3_betas = np.mean(top_3_betas, axis=0)
+
+                model_attributes.append({
+                    'Dataset': key, 'Clusters': use_clusters, 'Model': 'WLS', 'K': k, 
+                    'Avg Beta Estimates': pd.Series(avg_top_3_betas, index=model.params.index),
+                    'Avg Top 3 MSE': avg_top_3_mse,
+                    'R^2': model.rsquared,
+                    'Residuals': model.resid
+                })
+
+                all_ols_mse_folds = []
+                all_ols_beta_coefficients = []
+
+                for _ in range(num_iterations):
+                    kf = KFold(n_splits=k, shuffle=shuffle, random_state=random_state)
+                    for train_index, test_index in kf.split(df):
+                        X_train_ols, X_test_ols = X_filtered.iloc[train_index], X_filtered.iloc[test_index]
+                        y_train_ols, y_test_ols = y.iloc[train_index], y.iloc[test_index]
+
+                        ols_model = sm.OLS(y_train_ols, X_train_ols).fit()
+                        y_pred_ols = ols_model.predict(X_test_ols)
+                        mse_ols = mean_squared_error(y_test_ols, y_pred_ols)
+                        all_ols_mse_folds.append(mse_ols)
+                        all_ols_beta_coefficients.append(ols_model.params.values)
+
+                # Select the least 3 MSEs across all iterations and folds for OLS
+                top_3_indices_ols = np.argsort(all_ols_mse_folds)[:3]
+                top_3_mse_ols = [all_ols_mse_folds[i] for i in top_3_indices_ols]
+                avg_top_3_mse_ols = np.mean(top_3_mse_ols)
+                top_3_betas_ols = [all_ols_beta_coefficients[i] for i in top_3_indices_ols]
+                avg_top_3_betas_ols = np.mean(top_3_betas_ols, axis=0)
+
+                model_attributes.append({
+                    'Dataset': key, 'Clusters': use_clusters, 'Model': 'OLS', 'K': k, 
+                    'Avg Beta Estimates': pd.Series(avg_top_3_betas_ols, index=ols_model.params.index),
+                    'Avg Top 3 MSE': avg_top_3_mse_ols,
+                    'R^2': ols_model.rsquared,
+                    'Residuals': ols_model.resid
+                })
+        
+        results[key] = model_attributes
+
+    return results
+
+# Function to plot wls and ols with dropdowns
+def plot_wls_ols_with_dropdowns(results_dict):
+    variables = set()
+    k_values = set()
+    for key in results_dict:
+        for entry in results_dict[key]:
+            if 'Avg Beta Estimates' in entry:
+                variables.update(entry['Avg Beta Estimates'].keys())
+            k_values.add(entry['K'])
+    
+    variables = sorted(variables)
+    k_values = sorted(k_values)
+
+    # Create subplots: 3 rows, 2 columns
+    fig = make_subplots(rows=3, cols=2, subplot_titles=[
+        'Beta Estimates (OLS)', 'Beta Estimates (WLS)',
+        'Avg Top 3 MSE (OLS)', 'Avg Top 3 MSE (WLS)',
+        '$R^2 (OLS)$', '$R^2 (WLS)$'
+    ], vertical_spacing=0.1, horizontal_spacing=0.1)
+
+    def add_traces_to_fig(df, title_suffix):
+        for var in variables:
+            for cluster_status in [True, False]:
+                for model in ['WLS', 'OLS']:
+                    var_values = []
+                    for entry in df:
+                        if entry['Clusters'] == cluster_status and entry['Model'] == model:
+                            k = entry['K']
+                            if var in entry['Avg Beta Estimates']:
+                                var_values.append(entry['Avg Beta Estimates'][var])
+                            else:
+                                var_values.append(0)  # Handle missing variable case
+
+                    line_style = dict(dash='dash') if not cluster_status else dict()  # Dotted lines for Clusters=False
+                    cluster_text = "Clusters=True" if cluster_status else "Clusters=False"
+                    row, col = (1, 1) if model == 'OLS' else (1, 2)
+                    fig.add_trace(go.Scatter(x=k_values, y=var_values, mode='lines+markers', name=f'{var} ({model}, {cluster_text}, {title_suffix})', line=line_style, visible=False), row=row, col=col)
+
+        for cluster_status in [True, False]:
+            for model in ['WLS', 'OLS']:
+                r_squared_values = [entry['R^2'] for entry in df if entry['Clusters'] == cluster_status and entry['Model'] == model]
+                avg_top3_mse_values = [entry['Avg Top 3 MSE'] for entry in df if entry['Clusters'] == cluster_status and entry['Model'] == model]
+                
+                line_style = dict(dash='dash') if not cluster_status else dict()  # Dotted lines for Clusters=False
+                cluster_text = "Clusters=True" if cluster_status else "Clusters=False"
+                row_r2, col_r2 = (3, 1) if model == 'OLS' else (3, 2)
+                row_mse, col_mse = (2, 1) if model == 'OLS' else (2, 2)
+                
+                fig.add_trace(go.Scatter(x=k_values, y=avg_top3_mse_values, mode='lines+markers', name=f'Avg Top 3 MSE ({model}, {cluster_text}, {title_suffix})', line=line_style, visible=False), row=row_mse, col=col_mse)
+                fig.add_trace(go.Scatter(x=k_values, y=r_squared_values, mode='lines+markers', name=f'$R^2 ({model}, {cluster_text}, {title_suffix})$', line=line_style, visible=False), row=row_r2, col=col_r2)
+
+    add_traces_to_fig(results_dict['Nominal rates with clusters'], 'Nominal rates')
+    add_traces_to_fig(results_dict['Nominal diff rates with clusters'], 'Nominal diff rates')
+    add_traces_to_fig(results_dict['Nominal log with clusters'], 'Nominal log')
+
+    # Update layout with dropdown and legend button
+    fig.update_layout(
+        title='Model Comparisons',
+        showlegend=False,
+        height=900, width=1400,  # Increase plot size
+        updatemenus=[
+            {
+                'buttons': [
+                    {
+                        'label': 'Nominal rates',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [i < len(fig.data) // 3 for i in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for Nominal rates'}
+                        ]
+                    },
+                    {
+                        'label': 'Nominal diff rates',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [(len(fig.data) // 3 <= i < 2 * len(fig.data) // 3) for i in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for Nominal diff rates'}
+                        ]
+                    },
+                    {
+                        'label': 'Nominal log',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [i >= 2 * len(fig.data) // 3 for i in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for Nominal log'}
+                        ]
+                    },
+                    {
+                        'label': 'All',
+                        'method': 'update',
+                        'args': [
+                            {'visible': [True for _ in range(len(fig.data))]},
+                            {'title': 'Model Comparisons for All'}
+                        ]
+                    }
+                ],
+                'direction': 'down',
+                'showactive': True,
+                'x': 0.17,
+                'xanchor': 'left',
+                'y': 1.15,
+                'yanchor': 'top'
+            },
+            {
+                'buttons': [
+                    {
+                        'label': 'Show Legend',
+                        'method': 'relayout',
+                        'args': [{'showlegend': True}]
+                    },
+                    {
+                        'label': 'Hide Legend',
+                        'method': 'relayout',
+                        'args': [{'showlegend': False}]
+                    }
+                ],
+                'direction': 'down',
+                'showactive': True,
+                'x': 0.3,
+                'xanchor': 'left',
+                'y': 1.15,
+                'yanchor': 'top'
+            }
+        ]
+    )
+
+    # Initialize the plot with 'Nominal rates' visible
+    for i in range(len(fig.data) // 3):
+        fig.data[i].visible = True
+
+    return fig
+
+
+# Function to run wls regressions for all combinations of independent varibles (for one dataframe)
+def run_regression_combinations(df, dependent_var, independent_vars):
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
+    county_unem = df.groupby('FIPS')[dependent_var].var()
+    df['weight'] = df['FIPS'].map(lambda x: 1 / county_unem.get(x, np.nan))
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=['weight'])
+
+    weight = df['weight']
+    y = df[dependent_var]
+
+    results = []
+
+    for i in range(1, len(independent_vars) + 1):
+        for combo in itertools.combinations(independent_vars, i):
+            X = df[list(combo)]
+            model = sm.WLS(y, X, weights=weight).fit()
+            result = {
+                'Model': ', '.join(combo),
+                'r-squared': model.rsquared
+            }
+            for var in combo:
+                result[var] = model.params.get(var, np.nan)
+            results.append(result)
+
+    results_df = pd.DataFrame(results).set_index('Model').T
+    return results_df
+
+# Function to plot regression combinations
+def plot_results_run_regression_combinations(results_df, file_name):
+    fig = go.Figure()
+
+    for column in results_df.columns:
+        fig.add_trace(go.Scatter(
+            x=results_df.index,
+            y=results_df[column],
+            mode='lines+markers',
+            name=column
+        ))
+
+    fig.update_layout(
+        title='Regression Results',
+        xaxis_title='Variables',
+        yaxis_title='Values',
+        legend_title='Models'
+    )
+
+    # Save the plot as an HTML file
+    pio.write_html(fig, file=file_name, auto_open=False)
