@@ -26,8 +26,6 @@ import itertools
 import plotly.io as pio
 
 
-
-
 # Function to calculate AIC
 def calculate_aic(n, rss, k):
     return n * np.log(rss / n) + 2 * k
@@ -1348,8 +1346,8 @@ def plot_wls_ols_with_dropdowns(results_dict):
     return fig
 
 
-# Function to run wls regressions for all combinations of independent varibles (for one dataframe)
-def run_regression_combinations(df, dependent_var, independent_vars):
+# Function to run wls regressions for all combinations of independent varibles (for multiple dataframes)
+def run_regression_combinations(df, dependent_var, independent_vars, always_include=None, never_include=None, df_name='df', include_constant=False):
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
 
     county_unem = df.groupby('FIPS')[dependent_var].var()
@@ -1361,38 +1359,69 @@ def run_regression_combinations(df, dependent_var, independent_vars):
 
     results = []
 
+    if always_include is None:
+        always_include = []
+    if never_include is None:
+        never_include = []
+
+    independent_vars = [var for var in independent_vars if var not in never_include]
+
     for i in range(1, len(independent_vars) + 1):
         for combo in itertools.combinations(independent_vars, i):
-            X = df[list(combo)]
+            combo = list(always_include) + list(combo)
+            X = df[combo]
+
+            # Add a constant term if required
+            if include_constant:
+                X = sm.add_constant(X)
+                combo = ['const'] + combo
+
             model = sm.WLS(y, X, weights=weight).fit()
             result = {
+                'DataFrame': df_name,
                 'Model': ', '.join(combo),
-                'r-squared': model.rsquared
+                'r-squared': model.rsquared,
+                'Variables': '<br>'.join(
+                    [f'{var}: {model.params[var]:.4f}' if isinstance(model.params[var], (int, float)) else f'{var}: {model.params[var]}'
+                     if var in model.params.index else f'{var}: nan' for var in combo])  # Format variables and their values for hover text
             }
             for var in combo:
                 result[var] = model.params.get(var, np.nan)
             results.append(result)
 
-    results_df = pd.DataFrame(results).set_index('Model').T
+    results_df = pd.DataFrame(results)
     return results_df
 
-# Function to plot regression combinations
-def plot_results_run_regression_combinations(results_df, file_name):
+# Function to plot the wls regressions from the multiple dataframes
+def plot_combined_results(results_dfs, file_name):
+    combined_results = pd.concat(results_dfs)
     fig = go.Figure()
 
-    for column in results_df.columns:
-        fig.add_trace(go.Scatter(
-            x=results_df.index,
-            y=results_df[column],
-            mode='lines+markers',
-            name=column
-        ))
+    for df_name, group in combined_results.groupby('DataFrame'):
+        for column in group.drop(columns=['DataFrame', 'Model', 'r-squared', 'Variables']).columns:
+            fig.add_trace(go.Scatter(
+                x=group['Model'],
+                y=group[column],
+                mode='markers',
+                name=f'{df_name}: {column}',
+                text=group.apply(lambda row: f"Variables:<br>{row['Variables']}<br>R-squared: {row['r-squared']:.4f}<br>Value: {row[column]:.4f}", axis=1),  # Set hover text with variables, R-squared, and their values
+                hoverinfo='text'  # Display hover text
+            ))
 
     fig.update_layout(
-        title='Regression Results',
-        xaxis_title='Variables',
+        title='Combined Regression Results',
+        xaxis_title='Models',
         yaxis_title='Values',
-        legend_title='Models'
+        legend_title='Variables',
+        autosize=False,
+        width=1600,  # Adjust the width
+        height=800,  # Adjust the height
+        margin=dict(
+            l=100,
+            r=100,
+            b=200,  # Adjust bottom margin to accommodate long x-axis labels
+            t=100
+        )
     )
 
     # Save the plot as an HTML file
