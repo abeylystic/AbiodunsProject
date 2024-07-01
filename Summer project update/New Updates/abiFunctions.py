@@ -1426,3 +1426,109 @@ def plot_combined_results(results_dfs, file_name):
 
     # Save the plot as an HTML file
     pio.write_html(fig, file=file_name, auto_open=False)
+    
+    
+# Function to plot wls regressions combinations with k-folds
+def run_regression_combinations_kfold(df, dependent_var, independent_vars, always_include=None, never_include=None, 
+                                df_name='df', include_constant=False, n_splits=10, random_state=None):
+    np.random.seed(random_state)
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
+    county_unem = df.groupby('FIPS')[dependent_var].var()
+    df['weight'] = df['FIPS'].map(lambda x: 1 / county_unem.get(x, np.nan))
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=['weight'])
+
+    weight = df['weight']
+    y = df[dependent_var]
+
+    results = []
+
+    if always_include is None:
+        always_include = []
+    if never_include is None:
+        never_include = []
+
+    independent_vars = [var for var in independent_vars if var not in never_include]
+
+    for i in range(1, len(independent_vars) + 1):
+        for combo in itertools.combinations(independent_vars, i):
+            combo = list(always_include) + list(combo)
+            X = df[combo]
+
+            if include_constant:
+                X = sm.add_constant(X)
+                combo = ['const'] + combo
+
+            kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+            mse_list = []
+            r_squared_list = []
+            beta_estimates = []
+
+            for train_index, test_index in kf.split(X):
+                X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+                y_train, y_test = y.iloc[train_index], y.iloc[test_index]
+                weights_train = weight.iloc[train_index]
+
+                model = sm.WLS(y_train, X_train, weights=weights_train).fit()
+                y_pred = model.predict(X_test)
+                mse = np.mean((y_test - y_pred) ** 2)
+                mse_list.append(mse)
+                r_squared = model.rsquared
+                r_squared_list.append(r_squared)
+                beta_estimates.append(model.params)
+
+            top_3_mse = sorted(mse_list)[:3]
+            avg_top_3_mse = np.mean(top_3_mse)
+            avg_beta_estimates = np.mean(beta_estimates, axis=0)
+            avg_r_squared = np.mean(r_squared_list)
+
+            result = {
+                'DataFrame': df_name,
+                'Model': ', '.join(combo),
+                'r-squared': avg_r_squared,
+                'avg_top_3_mse': avg_top_3_mse,
+                'Variables': '<br>'.join(
+                    [f'{combo[idx]}: {avg_beta_estimates[idx]:.4f}' for idx in range(len(combo))])
+            }
+            for idx, var in enumerate(combo):
+                result[var] = avg_beta_estimates[idx]
+            results.append(result)
+
+    results_df = pd.DataFrame(results)
+    return results_df
+
+
+# Function to plot the combined wls regresions results from k-fold
+def plot_combined_results_kfold(results_dfs, file_name):
+    combined_results = pd.concat(results_dfs)
+    fig = go.Figure()
+
+    for df_name, group in combined_results.groupby('DataFrame'):
+        for column in group.drop(columns=['DataFrame', 'Model', 'r-squared', 'Variables', 'avg_top_3_mse']).columns:
+            fig.add_trace(go.Scatter(
+                x=group['Model'],
+                y=group[column],
+                mode='markers',
+                name=f'{df_name}: {column}',
+                text=group.apply(lambda row: f"Variables:<br>{row['Variables']}<br>R-squared: {row['r-squared']:.4f}<br>Avg Top 3 MSE: {row['avg_top_3_mse']:.4f}<br>Value: {row[column]:.4f}", axis=1),  # Set hover text with variables, R-squared, Avg Top 3 MSE, and their values
+                hoverinfo='text'  # Display hover text
+            ))
+
+    fig.update_layout(
+        title='Combined Regression Results',
+        xaxis_title='Models',
+        yaxis_title='Values',
+        legend_title='Variables',
+        autosize=False,
+        width=1600,  # Adjust the width
+        height=800,  # Adjust the height
+        margin=dict(
+            l=100,
+            r=100,
+            b=200,  # Adjust bottom margin to accommodate long x-axis labels
+            t=100
+        )
+    )
+
+    # Save the plot as an HTML file
+    pio.write_html(fig, file=file_name, auto_open=False)
