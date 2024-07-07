@@ -208,62 +208,85 @@ def calculate_avg_squared_correlations(results, df, independent_vars):
     return avg_squared_correlation, squared_correlations
 
 
-# Function to build skeleton for undirected DAG
-def build_skeleton(df, undirected_graph, p_val = 0.005):    
-    def check_remaining_controls(control_vars, undirected_graph, x, y, controls_used):
-        for c_var in control_vars:
-            c_used = copy.copy(controls_used)
-            if y in undirected_graph[x]:
-                c_used.append(c_var)
-                test = pg.partial_corr(data=df, x=x, y=y, covar=c_used, method="pearson")
-                if test["p-val"].values[0] > p_val:
-                    undirected_graph[x].remove(y)
-                    break
-                else:
-                    remaining_controls = copy.copy(control_vars)
-                    remaining_controls.remove(c_var)
-                    check_remaining_controls(remaining_controls, undirected_graph, x, y, c_used)
-
-    for x in df.columns:
-        ys = undirected_graph[x]
-        for y in ys[:]:  # Use a slice copy to avoid modifying the list during iteration
-            if x != y:
-                test = pg.partial_corr(data=df, x=x, y=y, covar=None, method="pearson")
-                if test["p-val"].values[0] > p_val:
-                    undirected_graph[x].remove(y)
-                else:
-                    control_vars = [z for z in df.columns if z != y and z != x]
-                    check_remaining_controls(control_vars, undirected_graph, x, y, [])
+import networkx as nx
+import matplotlib.pyplot as plt
+from networkx.drawing.nx_agraph import graphviz_layout  # Using pygraphviz layout
+# Function to buil skeleton
+def build_skeleton(df, undirected_graph):
+    # Function to build the skeleton (undirected graph) of the dataframe
+    # This is a placeholder implementation
+    # Replace it with the actual logic for building the skeleton
+    for i, var1 in enumerate(df.columns):
+        for var2 in df.columns[i + 1:]:
+            # Example criterion for adding an edge (replace with actual criterion)
+            if abs(df[var1].corr(df[var2])) > 0.5:
+                undirected_graph[var1].append(var2)
+                undirected_graph[var2].append(var1)
     return undirected_graph
 
-# Function to plot undirected DAG
-def graph_undirected_DAG(undirected_graph, df, title="DAG Structure"):
-    graph = nx.DiGraph()
-    edges = []
-    edge_labels = {}
+# Function to create undirected graph
+def graph_undirected_DAG(undirected_graph, title, ax):
+    graph = nx.Graph()
+    for node, edges in undirected_graph.items():
+        for edge in edges:
+            graph.add_edge(node, edge)
+    pos = graphviz_layout(graph, prog='neato')
+    nx.draw(graph, pos, ax=ax, node_color="C0", node_size=1500, with_labels=True, arrows=False, font_size=10, alpha=1, font_color="white")
+    ax.set_title(title, fontsize=12)
+
+# Function to convert undirected graph to directed
+def convert_to_directed(undirected_graph):
+    # Function to convert the undirected graph to a directed acyclic graph (DAG)
+    # This is a placeholder implementation
+    # Replace it with the actual logic for converting to a DAG
+    dag = nx.DiGraph()
+    for node, edges in undirected_graph.items():
+        for edge in edges:
+            dag.add_edge(node, edge)
+    return dag
+
+# Function to plot converted dag for specific dataframe
+def plot_dag_for_dataframe(df, exclude_columns=None, ax=None, title=None):
+    if exclude_columns is not None:
+        # Check if columns exist before dropping
+        drop_columns = [col for col in exclude_columns if col in df.columns]
+        df = df.drop(columns=drop_columns)
+
+    # Build undirected graph (skeleton)
+    undirected_graph = {key: [] for key in df.columns}
+    undirected_graph = build_skeleton(df, undirected_graph)
     
-    for key in undirected_graph:
-        for key2 in undirected_graph[key]:
-            if (key2, key) not in edges:
-                edge = (key.replace(" ", "\n"), key2.replace(" ", "\n"))
-                edges.append(edge)
+    # Plot undirected graph
+    graph_undirected_DAG(undirected_graph, title=f"Undirected Graph: {title}", ax=ax)
+    
+    # Convert undirected graph to directed acyclic graph (DAG)
+    dag = convert_to_directed(undirected_graph)
+    
+    # Plot DAG
+    pos = graphviz_layout(dag, prog='dot')
+    nx.draw(dag, pos, ax=ax, node_color="C0", node_size=1500, with_labels=True, arrows=True, font_size=10, alpha=1, font_color="black")
+    ax.set_title(f"DAG: {title}", fontsize=12)
+    ax.axis("off")
 
-    graph.add_edges_from(edges)
-    color_map = ["C0" for _ in graph]
+# Function to plot converted graph in grids
+def plot_dags_in_grid(dag_dict, exclude_columns=None):
+    num_plots = len(dag_dict)
+    num_cols = 2  # Number of columns in the grid layout
+    num_rows = (num_plots + num_cols - 1) // num_cols  # Calculate number of rows
 
-    fig, ax = plt.subplots(figsize=(20, 12))
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(15, 10))
+    axs = axs.flatten()  # Flatten the 2D array of axes for easier indexing
+
+    for i, (dag_name, dag_df) in enumerate(dag_dict.items()):
+        ax = axs[i]
+        plot_dag_for_dataframe(dag_df, exclude_columns=exclude_columns, ax=ax, title=dag_name)
+    
+    # Hide any remaining empty subplots
+    for j in range(i + 1, num_cols * num_rows):
+        axs[j].axis('off')
+
     plt.tight_layout()
-    pos = graphviz_layout(graph)
-
-    plt.title(title, fontsize=30)
-    nx.draw_networkx(graph, pos, node_color=color_map, node_size=1500,
-                     with_labels=True, arrows=False, font_size=20,
-                     alpha=1, font_color="white", ax=ax)
-
-    plt.axis("off")
-    plt.savefig("g1.png", format="PNG")
-    plt.show()
-    
+    plt.show()    
 
 # Function to get residuals 
 residuals = {}
@@ -1532,3 +1555,129 @@ def plot_combined_results_kfold(results_dfs, file_name):
 
     # Save the plot as an HTML file
     pio.write_html(fig, file=file_name, auto_open=False)
+    
+
+# Function to fit ols or wls using k-fold
+import itertools
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from sklearn.model_selection import KFold
+import networkx as nx
+import matplotlib.pyplot as plt
+from networkx.drawing.nx_agraph import graphviz_layout  # Using pygraphviz layout
+
+def ols_wls_combinations_kfold(df, dependent_var, independent_vars, model_type='ols', 
+                                      always_include=None, never_include=None, df_name='df', 
+                                      include_constant=False, n_splits=10, random_state=None):
+    np.random.seed(random_state)
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
+    y = df[dependent_var]
+
+    if model_type not in ['ols', 'wls']:
+        raise ValueError("model_type must be either 'ols' or 'wls'")
+
+    if model_type == 'wls':
+        # Calculate weights for WLS
+        county_unem = df.groupby('FIPS')[dependent_var].var()
+        df['weight'] = df['FIPS'].map(lambda x: 1 / county_unem.get(x, np.nan))
+        df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=['weight'])
+
+    results = []
+    residuals_dict = {var: [] for var in [dependent_var] + independent_vars}
+
+    if always_include is None:
+        always_include = []
+    if never_include is None:
+        never_include = []
+
+    independent_vars = [var for var in independent_vars if var not in never_include]
+
+    for i in range(1, len(independent_vars) + 1):
+        for combo in itertools.combinations(independent_vars, i):
+            combo = list(always_include) + list(combo)
+            X = df[combo]
+
+            if include_constant:
+                X = sm.add_constant(X)
+                combo = ['const'] + combo
+
+            kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+            mse_list = []
+            r_squared_list = []
+            beta_estimates = []
+            fold_residuals = {var: [] for var in [dependent_var] + combo if var != 'const'}
+
+            for train_index, test_index in kf.split(X):
+                X_train, X_test = X.iloc[train_index].reset_index(drop=True), X.iloc[test_index].reset_index(drop=True)
+                y_train, y_test = y.iloc[train_index].reset_index(drop=True), y.iloc[test_index].reset_index(drop=True)
+
+                if model_type == 'ols':
+                    model = sm.OLS(y_train, X_train).fit()
+                elif model_type == 'wls':
+                    weights = df['weight'].iloc[train_index].reset_index(drop=True)
+                    model = sm.WLS(y_train, X_train, weights=weights).fit()
+
+                y_pred = model.predict(X_test)
+                mse = np.mean((y_test - y_pred) ** 2)
+                mse_list.append(mse)
+                r_squared = model.rsquared
+                r_squared_list.append(r_squared)
+                beta_estimates.append(model.params)
+                
+                residuals_y = y_test - y_pred
+                fold_residuals[dependent_var].extend(residuals_y)
+
+                # Calculate and store residuals for independent variables
+                for var in combo:
+                    if var != 'const':
+                        residuals_X = X_test[var] - model.predict(X_test)
+                        fold_residuals[var].extend(residuals_X)
+
+            top_3_mse = sorted(mse_list)[:3]
+            avg_top_3_mse = np.mean(top_3_mse)
+            avg_beta_estimates = np.mean(beta_estimates, axis=0)
+            avg_r_squared = np.mean(r_squared_list)
+
+            result = {
+                'DataFrame': df_name,
+                'Model': ', '.join(combo),
+                'r-squared': avg_r_squared,
+                'avg_top_3_mse': avg_top_3_mse,
+                'Variables': '<br>'.join(
+                    [f'{combo[idx]}: {avg_beta_estimates[idx]:.4f}' for idx in range(len(combo))])
+            }
+            for idx, var in enumerate(combo):
+                result[var] = avg_beta_estimates[idx]
+            results.append(result)
+
+            # Store residuals for the model
+            for var in fold_residuals:
+                if var in residuals_dict:
+                    residuals_dict[var].extend(fold_residuals[var])
+                else:
+                    residuals_dict[var] = fold_residuals[var]
+
+    # Make sure all lists in residuals_dict have the same length
+    max_length = max(len(lst) for lst in residuals_dict.values())
+    for var in residuals_dict:
+        if len(residuals_dict[var]) < max_length:
+            residuals_dict[var].extend([np.nan] * (max_length - len(residuals_dict[var])))
+
+    results_df = pd.DataFrame(results)
+    return results_df, residuals_dict
+
+# Function to perform wls and ols regressions (a shorter version)
+# To reduce lines of code
+def perform_regression(df, dv, iv, model_type, ai, ni, df_name, include_constant, n_splits, random_state):
+    return ols_wls_combinations_kfold(
+        df, dv, iv, 
+        model_type=model_type, 
+        always_include=ai, 
+        never_include=ni, 
+        df_name=df_name, 
+        include_constant=include_constant, 
+        n_splits=n_splits, 
+        random_state=random_state
+    )
