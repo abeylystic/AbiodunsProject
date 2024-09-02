@@ -15,7 +15,7 @@ from linearmodels.panel import PanelOLS
 from itertools import combinations
 
 # Define a function to plot a DAG
-def graph_DAG(edges, df, title=""):
+def graph_DAG(edges, df, title="", ax=None):
     graph = nx.DiGraph()
     edge_labels = {}
     for edge in edges:
@@ -36,6 +36,7 @@ def graph_DAG(edges, df, title=""):
     fig, ax = plt.subplots(figsize=(20, 12))
     plt.tight_layout()
     pos = graphviz_layout(graph)#, "neato", None)
+    ax.set_title(title, fontsize=15)
 
     plt.title(title, fontsize=30)
     nx.draw_networkx(graph, pos, node_color=color_map, node_size=1200, with_labels=True,
@@ -43,7 +44,7 @@ def graph_DAG(edges, df, title=""):
                       edge_color='C1',
                       arrowstyle='Fancy, head_length=3, head_width=1.5, tail_width=.1',
                      connectionstyle='arc3, rad = 0.05', ax=ax)
-    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_color='green', font_size=20)
+    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_color='green', font_size=20, ax=ax)
 
     
     
@@ -100,11 +101,11 @@ def graph_DAG_cluster(edges, df, title="", algorithm="parallel", ax=None, sig_va
         fig, ax = plt.subplots(figsize=(20, 12))
 
     graph.add_edges_from(edges)
-    color_map = ["grey" for g in graph]
+    color_map = ["C0" for g in graph]
 
     graph.nodes()
     plt.tight_layout()
-    pos = graphviz_layout(graph)
+    pos = graphviz_layout(graph, prog='neato')
 
     edge_labels = build_edge_labels(edges, df, sig_vals=sig_vals)
 
@@ -117,12 +118,12 @@ def graph_DAG_cluster(edges, df, title="", algorithm="parallel", ax=None, sig_va
             edge_labels2.append(((u, v,), f'{edge_labels[(u, v)]}'))
     edge_labels = dict(edge_labels2)
 
-    nx.draw_networkx(graph, pos, node_color=color_map, node_size=1000,
+    nx.draw_networkx(graph, pos, node_color=color_map, node_size=500,
                      with_labels=True, arrows=True,
                      font_color="black",
-                     font_size=15, alpha=1,
+                     font_size=26, alpha=1,
                      width=1, edge_color="C1",
-                     arrowstyle="Fancy, head_length=2, head_width=1.5, tail_width=.1",
+                     arrowstyle="Fancy, head_length=3, head_width=1.5, tail_width=.1",
                      connectionstyle='arc3, rad = 0.05',
                      ax=ax)
     nx.draw_networkx_edge_labels(graph,
