@@ -1,0 +1,147 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Summer Project Report</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+
+        .background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: url('your-image.jpg') no-repeat center center/cover;
+        }
+
+        .content {
+            position: relative;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            overflow-y: auto;
+            max-height: 90%;
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            font-size: 1.5em;
+            margin-top: 20px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: auto auto;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .grid-item {
+            text-align: center;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        img {
+            width: 100%;
+            height: auto;
+        }
+
+        figure {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        figcaption {
+            font-size: 1em;
+            margin-top: 5px;
+        }
+
+        table.dataframe {
+            width: 130%;
+            margin: 20px 0;
+            border-collapse: collapse;
+        }
+
+        table.dataframe th, table.dataframe td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #ddd;
+            background-color: #f4f4f4;
+            color: #000;
+        }
+
+        table.dataframe caption {
+            font-size: 1em;
+            margin-bottom: 5px;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="background"></div>
+    <div class="content">
+        <h1>Introduction and Literature</h1>
+
+        <h2>Capital Theory</h2>
+        <p>Capital theory is a vast topic in finance and there still seems to be the argument as to what capital means and what it should truly mean. Neoclassicals define capital as a physical quantity that is independent of prices (Robinson, 1970). Historically, the definition of capital has been often shifting from either financial or physical. It started as being financial, in that it meant the sum of all money equivalent of all assets minus the sum of the money equivalent of all liabilities at a particular date to the conduct of the operations of a specific business unit (Lewin and Cachanosky, 2019). After a while economists argued that capital could not be defined as being financial only, and that birthed the physical aspect of capital referred to as physical capital. This connotes the set of physical production goods (often referred to as capital goods). In recent times, capital theorists began to take a look at how time could have an effect on capital as a whole, thus, illustrating capital in terms of having three different but inseparable dimensions: value, quantity and time. What this means is that capital can be viewed as financial, physical and yet involving time in a particular business process. Various disciplines have various definitions for capital, for example, Bourdieu’s capital theory recognizes that capital does not necessarily need to be economic but also includes other factors such as social and cultural capital (Bourdieu, 1986). Lewin and Cachanosky (2019) indicate that capital can be understood as the money value of a firm which accounts for all assets and liabilities. Stating that “productive activities employ stocks of durable and nondurable productive resources over time to produce a flow of valuable products or services for use or for sale”. The value of capital is based on the production process over time and the value of its finished goods or services. Interestingly, developed nations in recent years are beginning to experience a rise in the importance of intangible capital (such as information technology) in production and a decline in the reliance on physical capital (Caggese and Perez-Orive, 2022).</p>
+        <p>Interest rates as well as foreign exchange rates play a vital role in transmitting distortions to the capital structure of economies. Low interest rates do not accommodate for intangible investments due to the nature of intangible capital financing eventually resulting in consequences for aggregate capital misallocation. (McKinnon, 2010; Cachanosky, 2014; Caggese and Perez-Orive, 2022).</p>
+        
+        
+        <h2>Capital Structure</h2>
+        <p>[Insert your text here]</p>
+
+        <h1>Results</h1>
+        <p>[Insert your results analysis here]</p>
+
+        <!-- Image Grid -->
+        <div class="grid-container">
+
+            <div class="grid-item">
+                <img src="plots/rates_w_efw_w_o_clusters.png" alt="">
+            </div>
+    
+            <div class="grid-item">
+                <img src="plots/rates_w_o_efw_w_o_clusters.png" alt="">
+            </div>
+    
+            <div class="grid-item">
+                <img src="plots/diff_rates_w_efw_w_o_clusters.png" alt="">
+            </div>
+    
+            <div class="grid-item">
+                <img src="plots/diff_rates_w_o_efw_w_o_clusters.png" alt="">
+            </div>
+    
+        </div>
+        <figcaption>Fig 1. Selected Image Grid</figcaption>
+
+        <h2>Ordinary Least Squares (OLS) Regressions</h2>
+        <p>[Insert your regression analysis here]</p>
+    </div>
+</body>
+</html>
